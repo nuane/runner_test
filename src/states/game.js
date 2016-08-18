@@ -3,6 +3,12 @@ import Hero from '../prefabs/hero';
 
 import Zombie from '../prefabs/zombie';
 
+let keyInputIsDown = false;
+let touchInputIsDown = false;
+
+//So I prefer the idea that the main game loop should only be used in one main state or class (any kind of looping executable; here it's javascript and requestAnimationFrame)
+//in other words TODO, make everything dynamic
+
 class Game extends Phaser.State {
 
   constructor() {
@@ -52,7 +58,7 @@ class Game extends Phaser.State {
 
   update() {
     if (this.enemies.total === 0){
-      for (var i = 0; 12 > i; i++) {
+      for (var i = 0; 3 > i; i++) {
         this.createEnemy();
       }
     }
@@ -86,27 +92,43 @@ class Game extends Phaser.State {
     {
       this.player.inputDown();
     }
-    if (this.game.input.activePointer.isDown)
-    {
-      this.player.acivteInput(this.game.input.activePointer);
-    }
 
+    if (this.game.input.mousePointer.isDown)
+    {
+      this.player.acivteInput(this.game.input.mousePointer);
+    }
     if ( this.leftKey.isDown )
     {
+      touchInputIsDown = true;
       this.player.inputLeft();
     }
     if ( this.rightKey.isDown )
     {
+      touchInputIsDown = true;
       this.player.inputRight();
     }
-    if ( this.leftKey.isUp && this.player.chargeAttackLeft )
+    //touch controls
+    if (this.game.input.pointer1.isDown)
     {
+      keyInputIsDown = true;
+      if (this.game.input.pointer1.x > this.game.width/2)
+      {
+        this.player.inputRight()
+      } else
+      {
+        this.player.inputLeft();
+      }
+    }
+
+    if (  ( (this.leftKey.isUp && this.rightKey.isUp) && touchInputIsDown ) || ( this.game.input.pointer1.isUp && keyInputIsDown )  )
+    {
+      touchInputIsDown = false;
+      keyInputIsDown = false;
       this.player.inputCharged();
     }
-    if ( this.rightKey.isUp && this.player.chargeAttackRight )
-    {
-      this.player.inputCharged();
-    }
+
+    //END OF INPUT
+
 
     //bang bang boom boom TODO enemies hitting bullets
     this.game.physics.arcade.overlap(this.player.gun, this.enemies, function(bullet, enemy) {
@@ -118,18 +140,26 @@ class Game extends Phaser.State {
       //if dashing, player dashAttack(s), else TODO
       if (p.dashing)
       {
-        e.hitEnemy('player_dash_overlap');
+        console.log(p.dashing);
         if (Math.round(Math.random()) === 1 && e.knockResist)
         {
           e.knockResistance += 1;
         }
         e.knockResist = false;
-        this.player.body.velocity.x = 0;
+        p.body.velocity.x = 0;
         //pass true: hit enemy
-        this.player.dashAttack(true);
-      } else
+        p.dashAttack();
+      } else if (e.isAttacking)
       {
-        //what to do when enemy is nest to player TODO
+
+      }else
+      {
+        e.hitEnemy('collision_');
+        //TODO make individual methods for player/enemy default collision
+        // p.body.velocity.x = 500;
+        // p.body.velocity.y = -500;
+        // e.body.velocity.x = 500;
+        // e.body.velocity.y = -500;
       }
     }, null, this);
     // this.game.physics.arcade.collide(this.enemies)
@@ -148,6 +178,7 @@ class Game extends Phaser.State {
   render() {
     this.game.debug.spriteInfo(this.player, 32, 450);
     this.game.debug.body(this.player);
+    this.game.debug.body(this.player.gun);
 
     this.game.debug.pointer(this.game.input.activePointer);
     this.game.debug.pointer(this.game.input.pointer1);

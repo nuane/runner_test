@@ -1,6 +1,7 @@
 class Zombie extends Phaser.Sprite {
 
   //initialization code in the constructor
+  //TODO look into javascript public/private variables. These are all public variables, but many should be private, for ease of use
   constructor(game, x, y, frame, hero) {
     super(game, x, y, 'goblin_soldier', frame);
     this.hero = hero;
@@ -17,17 +18,33 @@ class Zombie extends Phaser.Sprite {
     this.animations.add('knock', [7,8,9], 10, false);
     this.animations.play('walk');
 
-    this.enemySpeed = 200;
+    this.standardSpeed = 200;
+    this.attackSpeed = 800;
 
+    this.isAttacking = false;
+    this.isAttackingFor = 0;
+    this.isAttackingSet = 500;
+    this.isAttackingFrom = 0;
+    this.attackingDelay = 0;
+    this.attackingDelaySet = this.isAttackingSet * 4;
+    //attacking direction: false=left to right, and true=right to left
+    this.attackingDirection = true;
     //knockEnemy + knockBackRecovery act as flags for when enemy is hit
-    //knockEnemy Distance is what is a constant; knockVelocity is set dynamically
-    this.health = 10;
+
+    this.health = 5;
+    this.hitDelay = 0;
+    this.hitDelaySet = 50;
+
     this.knockResistance = 0;
     this.knockEnemy = false;
     this.knockBackRecovery = false;
     this.knockUp = false;
-    this.knockingDistance = 400;
     this.knockVelocity = 0;
+
+    // prolly should be private. Used for enemy velocity when hit.
+    this.knockNormal = 300;
+    this.knockStrong = 700;
+    //variables for knockback recovery
     this.knockbackFor = 0;
     this.knockbackSet = 500;
 
@@ -42,7 +59,7 @@ class Zombie extends Phaser.Sprite {
     }
 
     //if enemy is being knocked back
-    if (this.knockEnemy)
+    else if (this.knockEnemy)
     {
       if (!this.knockBackRecovery && !this.knockUp)
       {
@@ -57,18 +74,32 @@ class Zombie extends Phaser.Sprite {
         this.checkDelaySum(this.knockRecover) ? this.body.velocity.x = 0 : this.resetAction();
       }
     }
+    else if (this.isAttacking)
+    {
+      this.checkDelaySum(this.isAttackingFor) ? this.body.velocity.x = this.isAttackingFrom : this.resetAction();
+    }
     //after the enmy has been knocked backed, pause a moment for it to recover
     else
     {
       //how close enemy gets TODO make function for multiple enmies
-      if (this.position.x > this.hero.position.x+60 || this.position.x < this.hero.position.x-100 && !this.knockEnemy)
+      if (this.position.x > this.hero.position.x+180 || this.position.x < this.hero.position.x-180 && !this.knockEnemy)
       {
         this.position.x < this.hero.position.x ? this.scale.x = 2 : this.scale.x = -2;
-        this.position.x > this.hero.position.x ? this.body.velocity.x = -this.enemySpeed : this.body.velocity.x = this.enemySpeed;
+        this.position.x > this.hero.position.x ? this.body.velocity.x = -this.standardSpeed : this.body.velocity.x = this.standardSpeed;
         this.animations.play('walk');
-      } else if (this.knockEnemy)
-      {
-
+      }
+      else if ( (this.position.x > this.hero.position.x+90 && this.position.x < this.hero.position.x+180)
+        || (this.position.x > this.hero.position.x-180 && this.position.x < this.hero.position.x-90)
+        && !this.knockEnemy )
+        {
+          if ( this.checkDelaySum(this.attackingDelay) )
+          {
+            this.position.x > this.hero.position.x ? this.body.velocity.x = -this.standardSpeed : this.body.velocity.x = this.standardSpeed;
+            this.animations.play('stand');
+          } else
+          {
+            this.attackHero();
+          }
       }
       else
       {
@@ -78,22 +109,49 @@ class Zombie extends Phaser.Sprite {
     }
   }
 
+  // this.isAttacking = false;
+  // this.isAttackingFor = 0;
+  // this.isAttackingSet = 500;
+  // this.attackingDirection
+  // this.attackingDelay = 0;
+  // this.attackingDelaySet = this.isAttackingSet * 2;
+
+  attackHero(){
+    this.attackingDelay = this.setDelay(this.attackingDelaySet);
+    this.isAttacking = true;
+    //attackingDirection = true is left to right; false is right to left
+    this.position.x > this.hero.position.x ? this.attackingDirection = true : this.attackingDirection = false;
+    this.attackingDirection ? this.isAttackingFrom = -this.attackSpeed : this.isAttackingFrom = this.attackSpeed;
+    this.body.velocity.y = -400;
+    this.isAttackingFor = this.setDelay(this.isAttackingSet);
+  }
+
   //function called every time enemy is hit
+  //TODO spaghetti monster #s 37
   hitEnemy(attackType){
-    console.log(attackType);
+    console.log('in hit enemy:', attackType, this.hero.dashing);
     if (this.knockUp) console.log('hit in th eair');
-    if(!this.knockEnemy)
+    if(!this.knockEnemy && !this.checkDelaySum(this.hitDelay))
     {
+      this.hitDelay = this.setDelay(this.hitDelaySet);
       this.health--;
       switch(attackType){
         case "tapAttack":
-          this.knockResistance > 0 ? this.knockHit() : this.knockEnemyBack();
+          this.knockResistance > 0 ? this.knockHit() : this.knockEnemyBack(this.knockNormal);
+          break;
+        case "tapAttack":
+          this.knockResistance > 0 ? this.knockHit() : this.knockEnemyBack(this.knockNormal);
           break;
         case "duckAttack":
           this.knockEnemyUp();
           break;
+        case "dashAttack":
+          this.knockEnemyBack(this.knockStrong);
+          break;
+        case "collision_":
+          this.knockEnemyBack(this.knockNormal);
         default:
-          console.log('heyo');
+          // console.log('heyo');
       }
     }
   }
@@ -103,9 +161,10 @@ class Zombie extends Phaser.Sprite {
     this.body.velocity.x
   }
   //knock enemy back, this.hero.direction == true : forwoard(right); this.hero.direction == false : backward(left)
-  knockEnemyBack(){
+  //TODO this shouldn't necessarily be dependet on player direction, based on hitbox presented
+  knockEnemyBack(v){
     this.knockEnemy = true;
-    this.hero.direction ? this.knockVelocity = this.knockingDistance : this.knockVelocity = -this.knockingDistance; //this line is too hacky,
+    this.hero.direction ? this.knockVelocity = v : this.knockVelocity = -v; //this line is too hacky,
     this.body.velocity.y = -60 * (10*Math.random());
     this.knockBackFor = this.setDelay(this.knockbackSet);
     this.animations.play('knock');
@@ -131,6 +190,7 @@ class Zombie extends Phaser.Sprite {
     this.knockEnemy = false;
     this.knockBackRecovery = false;
     this.knockUp = false;
+    this.isAttacking = false;
   }
 
   setDelay(t){
